@@ -159,7 +159,12 @@ A real-time vehicle tracking system that displays live vehicle positions, speeds
 ---
 ### Demo Video
 
-[Download and Watch the Demo Video](videos/Screen%20Recording%202025-01-28%20222833.mp4)
+Watch the demo video below:
+
+[![Watch the video](https://img.youtube.com/vi/_FL5TPpRvbk/0.jpg)](https://youtu.be/_FL5TPpRvbk)
+
+> Click on the image above to watch the video on YouTube.
+
 
 
 ## 📸 Screenshots
