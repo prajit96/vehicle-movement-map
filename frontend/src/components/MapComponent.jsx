@@ -11,7 +11,6 @@ import {
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
-// Custom car icon
 const carIcon = new L.Icon({
   iconUrl:
     "https://banner2.cleanpng.com/20231220/whs/transparent-cartoon-red-car-white-rims-front-facing-car-missin-red-car-with-white-rims-missing-rear-view-1710963764469.webp",
@@ -19,15 +18,15 @@ const carIcon = new L.Icon({
   iconAnchor: [20, 40],
 });
 
-// Custom start and end marker icons (e.g., flag markers)
+// Custom start and end marker icons
 const startIcon = new L.Icon({
-  iconUrl: "https://media.istockphoto.com/id/1308342065/vector/folded-location-map-with-marker-city-map-with-pin-pointer-gps-navigation-map-with-city.jpg?s=612x612&w=0&k=20&c=E9DP4dIwSdwaveNwcYU2LzBeKuBoKLa7nsTxTWDHObw=", // Flag icon for start
+  iconUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Flag_map_marker.svg/120px-Flag_map_marker.svg.png", // Flag icon for start
   iconSize: [32, 32],
   iconAnchor: [16, 32],
 });
 
 const endIcon = new L.Icon({
-  iconUrl: "https://media.istockphoto.com/id/1308342065/vector/folded-location-map-with-marker-city-map-with-pin-pointer-gps-navigation-map-with-city.jpg?s=612x612&w=0&k=20&c=E9DP4dIwSdwaveNwcYU2LzBeKuBoKLa7nsTxTWDHObw=", // Flag icon for end
+  iconUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Red_flag_map_marker.svg/120px-Red_flag_map_marker.svg.png", // Flag icon for end
   iconSize: [32, 32],
   iconAnchor: [16, 32],
 });
@@ -36,21 +35,22 @@ const endIcon = new L.Icon({
 const lerp = (start, end, t) => start + (end - start) * t;
 
 // Helper component to animate map panning
-const SmoothMarker = ({ position, icon, popupContent }) => {
+const SmoothMarker = ({ position, icon, popupContent, onClick, animate }) => {
   const map = useMap();
   const markerRef = useRef(null);
   const [currentPos, setCurrentPos] = useState(position);
 
   useEffect(() => {
+    if (!animate) return; 
     let animationFrame;
     let startTime;
-    const duration = 2000; // Duration of animation in ms
+    const duration = 2000;
     const startPos = currentPos;
 
-    const animate = (timestamp) => {
+    const animateMovement = (timestamp) => {
       if (!startTime) startTime = timestamp;
       const elapsed = timestamp - startTime;
-      const t = Math.min(elapsed / duration, 1); // Normalize time
+      const t = Math.min(elapsed / duration, 1);
       const newPos = [
         lerp(startPos[0], position[0], t),
         lerp(startPos[1], position[1], t),
@@ -58,22 +58,22 @@ const SmoothMarker = ({ position, icon, popupContent }) => {
       setCurrentPos(newPos);
 
       if (t < 1) {
-        animationFrame = requestAnimationFrame(animate);
+        animationFrame = requestAnimationFrame(animateMovement);
       } else {
         cancelAnimationFrame(animationFrame);
       }
     };
 
-    animationFrame = requestAnimationFrame(animate);
+    animationFrame = requestAnimationFrame(animateMovement);
     return () => cancelAnimationFrame(animationFrame);
-  }, [position]);
+  }, [position, animate]);
 
   useEffect(() => {
     map.panTo(currentPos, { animate: true, duration: 2 });
   }, [currentPos, map]);
 
   return (
-    <Marker position={currentPos} icon={icon} ref={markerRef}>
+    <Marker position={currentPos} icon={icon} ref={markerRef} eventHandlers={{ click: onClick }}>
       <Popup>{popupContent}</Popup>
     </Marker>
   );
@@ -81,82 +81,113 @@ const SmoothMarker = ({ position, icon, popupContent }) => {
 
 const MapComponent = () => {
   const [vehicles, setVehicles] = useState([]);
+  const [selectedVehicle, setSelectedVehicle] = useState(null);
+  const [showRouteHistory, setShowRouteHistory] = useState(false);
+  const [animateCar, setAnimateCar] = useState(false);
+  const [selectedDate, setSelectedDate] = useState("today"); 
 
   useEffect(() => {
     const interval = setInterval(() => {
       axios
-        .get("http://localhost:5000/api/positions") // Replace with your API endpoint
+        .get("https://vehicle-movement-backend-xzuu.onrender.com/api/positions")
         .then((response) => {
           setVehicles(response.data);
         })
         .catch((error) => console.error("Error fetching vehicle data:", error));
-    }, 2000); // Update every 2 seconds
+    }, 2000);
 
     return () => clearInterval(interval);
   }, []);
 
+  // Handle when a car marker is clicked
+  const handleMarkerClick = (vehicle) => {
+    setSelectedVehicle(vehicle);
+    setShowRouteHistory(false); // Hide route history when showing vehicle details
+    setAnimateCar(false); // Stop animation when a vehicle is clicked
+  };
+
+  // Handle date selection (Today, Tomorrow, etc.)
+  const handleDateChange = (date) => {
+    setSelectedDate(date);
+    // Logic to fetch or update vehicle data based on selected date
+    setAnimateCar(true); // Start car animation when date is selected
+  };
+
+  // Toggle route history visibility
+  const handleToggleRouteHistory = () => {
+    setShowRouteHistory(!showRouteHistory);
+  };
+
   return (
-    <MapContainer
-      center={[22.5405, 88.3375]} // Initial center
-      zoom={14}
-      style={{ height: "100vh", width: "100%" }}
-    >
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-      {vehicles.map((vehicle) => (
-        <React.Fragment key={vehicle.id}>
-          {/* Starting point marker */}
-          {vehicle.route && vehicle.route.length > 0 && (
+    <div>
+      <div className="header">
+        <button onClick={() => handleDateChange("today")}>Today</button>
+        <button onClick={() => handleDateChange("tomorrow")}>Tomorrow</button>
+      </div>
+
+      <MapContainer
+        center={[22.5405, 88.3375]}
+        zoom={14}
+        style={{ height: "100vh", width: "100%" }}
+      >
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        {vehicles.map((vehicle) => (
+          <React.Fragment key={vehicle.id}>
             <SmoothMarker
-              position={[
-                vehicle.route[0].latitude,
-                vehicle.route[0].longitude,
-              ]}
-              icon={startIcon} // Start flag icon
-              popupContent={<p><strong>Start Point</strong></p>}
+              position={[vehicle.current.latitude, vehicle.current.longitude]}
+              icon={carIcon}
+              onClick={() => handleMarkerClick(vehicle)}
+              popupContent={
+                <>
+                  <p><strong>Vehicle ID:</strong> {vehicle.id}</p>
+                  <p><strong>Speed:</strong> {vehicle.speed} km/h</p>
+                </>
+              }
+              animate={animateCar} 
             />
+
+            {/* Display route history if toggled */}
+            {showRouteHistory && vehicle.route && vehicle.route.length > 1 && (
+              <Polyline
+                positions={vehicle.route.map((point) => [
+                  point.latitude,
+                  point.longitude,
+                ])}
+                color="blue"
+                weight={3}
+                opacity={0.7}
+              />
+            )}
+          </React.Fragment>
+        ))}
+      </MapContainer>
+
+      {selectedVehicle && (
+        <div className="vehicle-details">
+          <h3>Vehicle Details</h3>
+          <p><strong>Vehicle ID:</strong> {selectedVehicle.id}</p>
+          <p><strong>Speed:</strong> {selectedVehicle.speed} km/h</p>
+          <p><strong>Current Location:</strong> Lat: {selectedVehicle.current.latitude}, Lng: {selectedVehicle.current.longitude}</p>
+          <p><strong>Stops:</strong></p>
+          {selectedVehicle.route && selectedVehicle.route.length > 0 ? (
+            <ul>
+              {selectedVehicle.route.map((stop, index) => (
+                <li key={index}>
+                  <p><strong>Stop:</strong> {stop.stop}</p>
+                  <p><strong>Time:</strong> {new Date(stop.time).toLocaleString()}</p>
+                  <p><strong>Coordinates:</strong> Lat: {stop.latitude}, Lng: {stop.longitude}</p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No route data available</p>
           )}
-
-          {/* Ending point marker */}
-          {vehicle.route && vehicle.route.length > 1 && (
-            <SmoothMarker
-              position={[
-                vehicle.route[vehicle.route.length - 1].latitude,
-                vehicle.route[vehicle.route.length - 1].longitude,
-              ]}
-              icon={endIcon} // End flag icon
-              popupContent={<p><strong>End Point</strong></p>}
-            />
-          )}
-
-          {/* Smooth marker for the vehicle */}
-          <SmoothMarker
-            position={[vehicle.current.latitude, vehicle.current.longitude]}
-            icon={carIcon}
-            popupContent={
-              <>
-                <p>
-                  <strong>Vehicle ID:</strong> {vehicle.id}
-                </p>
-                <p>
-                  <strong>Speed:</strong> {vehicle.speed} km/h
-                </p>
-              </>
-            }
-          />
-
-          {/* Route line for the vehicle */}
-          <Polyline
-            positions={vehicle.route.map((point) => [
-              point.latitude,
-              point.longitude,
-            ])}
-            color="blue"
-            weight={3}
-            opacity={0.7}
-          />
-        </React.Fragment>
-      ))}
-    </MapContainer>
+          <button onClick={handleToggleRouteHistory}>
+            {showRouteHistory ? "Hide Route History" : "Show Route History"}
+          </button>
+        </div>
+      )}
+    </div>
   );
 };
 
