@@ -101,8 +101,8 @@ const MapComponent = () => {
   // Handle date selection (Today, Tomorrow, etc.)
   const handleDateChange = (date) => {
     setSelectedDate(date);
-    setSelectedVehicle(null); // Reset selected vehicle when changing date
-    setPausedVehicles({}); // Resume all movements when date is changed
+    setSelectedVehicle(null); 
+    setPausedVehicles({}); 
   };
 
   return (
