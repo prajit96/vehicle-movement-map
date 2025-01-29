@@ -11,6 +11,7 @@ import {
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
+// Car icon
 const carIcon = new L.Icon({
   iconUrl:
     "https://banner2.cleanpng.com/20231220/whs/transparent-cartoon-red-car-white-rims-front-facing-car-missin-red-car-with-white-rims-missing-rear-view-1710963764469.webp",
@@ -18,30 +19,18 @@ const carIcon = new L.Icon({
   iconAnchor: [20, 40],
 });
 
-// Custom start and end marker icons
-const startIcon = new L.Icon({
-  iconUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Flag_map_marker.svg/120px-Flag_map_marker.svg.png", // Flag icon for start
-  iconSize: [32, 32],
-  iconAnchor: [16, 32],
-});
-
-const endIcon = new L.Icon({
-  iconUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Red_flag_map_marker.svg/120px-Red_flag_map_marker.svg.png", // Flag icon for end
-  iconSize: [32, 32],
-  iconAnchor: [16, 32],
-});
-
 // Smooth movement helper
 const lerp = (start, end, t) => start + (end - start) * t;
 
-// Helper component to animate map panning
+// Animated Marker Component with Pause & Resume
 const SmoothMarker = ({ position, icon, popupContent, onClick, animate }) => {
   const map = useMap();
   const markerRef = useRef(null);
   const [currentPos, setCurrentPos] = useState(position);
 
   useEffect(() => {
-    if (!animate) return; 
+    if (!animate) return; // If paused, don't move
+
     let animationFrame;
     let startTime;
     const duration = 2000;
@@ -82,40 +71,38 @@ const SmoothMarker = ({ position, icon, popupContent, onClick, animate }) => {
 const MapComponent = () => {
   const [vehicles, setVehicles] = useState([]);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
-  const [showRouteHistory, setShowRouteHistory] = useState(false);
-  const [animateCar, setAnimateCar] = useState(false);
-  const [selectedDate, setSelectedDate] = useState("today"); 
+  const [selectedDate, setSelectedDate] = useState("today");
+  const [pausedVehicles, setPausedVehicles] = useState({}); // Store paused state
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const fetchVehicles = () => {
       axios
         .get("https://vehicle-movement-backend-xzuu.onrender.com/api/positions")
         .then((response) => {
           setVehicles(response.data);
         })
         .catch((error) => console.error("Error fetching vehicle data:", error));
-    }, 2000);
+    };
 
+    fetchVehicles();
+    const interval = setInterval(fetchVehicles, 2000);
     return () => clearInterval(interval);
   }, []);
 
-  // Handle when a car marker is clicked
+  // Handle when a car marker is clicked (Toggle Pause/Resume)
   const handleMarkerClick = (vehicle) => {
-    setSelectedVehicle(vehicle);
-    setShowRouteHistory(false); // Hide route history when showing vehicle details
-    setAnimateCar(false); // Stop animation when a vehicle is clicked
+    setPausedVehicles((prev) => ({
+      ...prev,
+      [vehicle.id]: !prev[vehicle.id], // Toggle pause state
+    }));
+    setSelectedVehicle((prev) => (prev?.id === vehicle.id ? null : vehicle));
   };
 
   // Handle date selection (Today, Tomorrow, etc.)
   const handleDateChange = (date) => {
     setSelectedDate(date);
-    // Logic to fetch or update vehicle data based on selected date
-    setAnimateCar(true); // Start car animation when date is selected
-  };
-
-  // Toggle route history visibility
-  const handleToggleRouteHistory = () => {
-    setShowRouteHistory(!showRouteHistory);
+    setSelectedVehicle(null); // Reset selected vehicle when changing date
+    setPausedVehicles({}); // Resume all movements when date is changed
   };
 
   return (
@@ -133,6 +120,7 @@ const MapComponent = () => {
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         {vehicles.map((vehicle) => (
           <React.Fragment key={vehicle.id}>
+            {/* Moving Car Marker (Pauses when clicked) */}
             <SmoothMarker
               position={[vehicle.current.latitude, vehicle.current.longitude]}
               icon={carIcon}
@@ -141,13 +129,14 @@ const MapComponent = () => {
                 <>
                   <p><strong>Vehicle ID:</strong> {vehicle.id}</p>
                   <p><strong>Speed:</strong> {vehicle.speed} km/h</p>
+                  <p><strong>Status:</strong> {pausedVehicles[vehicle.id] ? "Paused" : "Moving"}</p>
                 </>
               }
-              animate={animateCar} 
+              animate={!pausedVehicles[vehicle.id]} // Stop animation if paused
             />
 
-            {/* Display route history if toggled */}
-            {showRouteHistory && vehicle.route && vehicle.route.length > 1 && (
+            {/* Always Show Route */}
+            {vehicle.route && vehicle.route.length > 1 && (
               <Polyline
                 positions={vehicle.route.map((point) => [
                   point.latitude,
@@ -162,13 +151,14 @@ const MapComponent = () => {
         ))}
       </MapContainer>
 
+      {/* Vehicle Details Panel */}
       {selectedVehicle && (
         <div className="vehicle-details">
           <h3>Vehicle Details</h3>
           <p><strong>Vehicle ID:</strong> {selectedVehicle.id}</p>
           <p><strong>Speed:</strong> {selectedVehicle.speed} km/h</p>
           <p><strong>Current Location:</strong> Lat: {selectedVehicle.current.latitude}, Lng: {selectedVehicle.current.longitude}</p>
-          <p><strong>Stops:</strong></p>
+          <p><strong>Route Stops:</strong></p>
           {selectedVehicle.route && selectedVehicle.route.length > 0 ? (
             <ul>
               {selectedVehicle.route.map((stop, index) => (
@@ -182,9 +172,6 @@ const MapComponent = () => {
           ) : (
             <p>No route data available</p>
           )}
-          <button onClick={handleToggleRouteHistory}>
-            {showRouteHistory ? "Hide Route History" : "Show Route History"}
-          </button>
         </div>
       )}
     </div>
